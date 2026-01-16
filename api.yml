@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: Video Game Exchange API
+  description: >
+    A RESTful API that allows users to register and exchange video games. This API follows Richardson Maturity Model (RMM) Level 2 compliance.
+  version: 1.0.0
+
+servers:
+- url: http://localhost:8000
+  description: Local development server
+
+paths:
+
+  /users:
+    post:
+      summary: Register a new user
+      description: Create a new user account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input data
+
+  /users/{userId}:
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+
+    get:
+      summary: Get a user by ID
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+
+    put:
+      summary: Replace a user
+      description: Fully replace all user properties.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+        '400':
+          description: Invalid input data
+        '404':
+          description: User not found
+
+    patch:
+      summary: Partially update a user
+      description: Update one or more user fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPartialUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+        '400':
+          description: Invalid input data
+        '404':
+          description: User not found
+
+    delete:
+      summary: Delete a user
+      responses:
+        '204':
+          description: User deleted successfully
+        '404':
+          description: User not found
+
+  /games:
+    post:
+      summary: Add a new game
+      description: Add a new video game to the exchange list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameCreate'
+      responses:
+        '201':
+          description: Game added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '400':
+          description: Invalid input data
+
+  /games/{gameId}:
+    parameters:
+    - name: gameId
+      in: path
+      required: true
+      schema:
+        type: integer
+
+    put:
+      summary: Replace a game
+      description: Fully replace all properties of a game.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameUpdate'
+      responses:
+        '200':
+          description: Game updated successfully
+        '404':
+          description: Game not found
+
+    patch:
+      summary: Partially update a game
+      description: Update specific game properties.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GamePartialUpdate'
+      responses:
+        '200':
+          description: Game updated successfully
+        '404':
+          description: Game not found
+
+    delete:
+      summary: Remove a game
+      responses:
+        '204':
+          description: Game deleted successfully
+        '404':
+          description: Game not found
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+    UserCreate:
+      type: object
+      required:
+      - username
+      - email
+      - password
+      - address
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        address:
+          type: string
+    UserUpdate:
+      type: object
+      required:
+      - username
+      - email
+      - address
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+    UserPartialUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+    Game:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        publisher:
+          type: string
+        year:
+          type: integer
+        system:
+          type: string
+        condition:
+          type: string
+        previousOwners:
+          type: integer
+    GameCreate:
+      type: object
+      required:
+      - name
+      - publisher
+      - year
+      - system
+      - condition
+      properties:
+        name:
+          type: string
+        publisher:
+          type: string
+        year:
+          type: integer
+        system:
+          type: string
+        condition:
+          type: string
+          enum: [ mint, good, fair, poor ]
+        previousOwners:
+          type: integer
+    GameUpdate:
+      type: object
+      required:
+      - name
+      - publisher
+      - year
+      - system
+      - condition
+      properties:
+        name:
+          type: string
+        publisher:
+          type: string
+        year:
+          type: integer
+        system:
+          type: string
+        condition:
+          type: string
+        previousOwners:
+          type: integer
+    GamePartialUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        publisher:
+          type: string
+        year:
+          type: integer
+        system:
+          type: string
+        condition:
+          type: string
+        previousOwners:
+          type: integer
