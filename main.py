@@ -9,6 +9,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Database setup
+sqlite_file_name = "database.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}"
+engine = create_engine(sqlite_url, echo=True)
+
+# Models
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    email: str
+    password: str
+    address: str
+
+class Game(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    platform: str
+    owner_id: int
+
+# Create tables
+SQLModel.metadata.create_all(engine)
+
 @app.get("/")
 def root():
     return {"message": "API is running"}
