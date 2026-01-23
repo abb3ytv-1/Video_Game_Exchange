@@ -1,0 +1,67 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: gameuser
+      POSTGRES_PASSWORD: passgame
+      POSTGRES_DB: videogameexchange
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - api-network
+
+  api1:
+    build: .
+    container_name: api1
+    environment:
+      DATABASE_URL: postgresql://gameuser:passgame@postgres:5432/videogameexchange
+      CONTAINER_NAME: api1
+    depends_on:
+      - postgres
+    networks:
+      - api-network
+    
+  api2:
+    build: .
+    container_name: api2
+    environment:
+      DATABASE_URL: postgresql://gameuser:passgame@postgres:5432/videogameexchange
+      CONTAINER_NAME: api2
+    depends_on:
+      - postgres
+    networks:
+      - api-network
+
+  api3:
+    build: .
+    container_name: api3
+    environment:
+      DATABASE_URL: postgresql://gameuser:passgame@postgres:5432/videogameexchange
+      CONTAINER_NAME: api3
+    depends_on:
+      - postgres
+    networks:
+      - api-network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx-load-balancer
+    ports:
+      - "8080:80"  # expose port 80 inside container as 8080 on host
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api1
+      - api2
+      - api3
+    networks:
+      - api-network
+
+volumes:
+  postgres_data:
+
+networks:
+  api-network:
+    driver: bridge

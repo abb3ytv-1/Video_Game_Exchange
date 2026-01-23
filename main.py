@@ -1,43 +1,41 @@
 import os
 from typing import List, Optional
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, status
 from sqlmodel import SQLModel, Field, Session, create_engine, select
+
+import socket
+
+# -------------------- Database Setup --------------------
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://gameuser:gamepass@localhost:5432/videogameexchange"
+)
+
+engine = create_engine(DATABASE_URL, echo=True)
+
+# -------------------- Lifespan Event --------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    SQLModel.metadata.create_all(engine)
+    yield
 
 # -------------------- App Setup --------------------
 app = FastAPI(
     title="Retro Video Game Exchange API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-# Database setup
-sqlite_file_name = "database.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-engine = create_engine(sqlite_url, echo=True)
-
-# Models
-class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str
-    email: str
-    password: str
-    address: str
-
-class Game(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    platform: str
-    owner_id: int
-
-# Create tables
-SQLModel.metadata.create_all(engine)
 
 @app.get("/")
 def root():
     return {"message": "API is running"}
 
-# -------------------- Database Setup --------------------
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///database.db")
-engine = create_engine(DATABASE_URL, echo=True)
+@app.get("/whoami")
+def whoami():
+    container_name = os.getenv("CONTAINER_NAME", "unknown")
+    return {"container": container_name}
 
 # -------------------- Models --------------------
 class User(SQLModel, table=True):
@@ -51,10 +49,14 @@ class Game(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     platform: str
-    owner_id: int
+    owner_id: int = Field(foreign_key="user.id")
 
-SQLModel.metadata.create_all(engine)
-
+class TradeOffer(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    offered_game_id: int = Field(foreign_key="game.id")
+    requested_game_id: int = Field(foreign_key="game.id")
+    status: str = Field(default="pending") # pending / accepted / rejected
+    requester_id: int = Field(foreign_key="user.id")
 # -------------------- User Endpoints --------------------
 @app.post("/users", response_model=User, status_code=status.HTTP_201_CREATED)
 def create_user(user: User):
@@ -83,10 +85,12 @@ def update_user(user_id: int, updated_user: User):
         user = session.get(User, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+
         user.name = updated_user.name
         user.email = updated_user.email
         user.password = updated_user.password
         user.address = updated_user.address
+
         session.commit()
         session.refresh(user)
         return user
@@ -107,6 +111,7 @@ def create_game(game: Game):
         owner = session.get(User, game.owner_id)
         if not owner:
             raise HTTPException(status_code=400, detail="Owner does not exist")
+
         session.add(game)
         session.commit()
         session.refresh(game)
@@ -131,9 +136,11 @@ def update_game(game_id: int, updated_game: Game):
         game = session.get(Game, game_id)
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
+
         game.title = updated_game.title
         game.platform = updated_game.platform
         game.owner_id = updated_game.owner_id
+
         session.commit()
         session.refresh(game)
         return game
@@ -144,6 +151,7 @@ def delete_game(game_id: int):
         game = session.get(Game, game_id)
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
+
         session.delete(game)
         session.commit()
 
@@ -152,8 +160,26 @@ def delete_game(game_id: int):
 def search_games(title: Optional[str] = None, owner_id: Optional[int] = None):
     with Session(engine) as session:
         query = select(Game)
+
         if title:
             query = query.where(Game.title.ilike(f"%{title}%"))
         if owner_id:
             query = query.where(Game.owner_id == owner_id)
+
         return session.exec(query).all()
+
+# ------------------ Offers -----------------------------
+# Create
+@app.post("/offers", response_model=TradeOffer)
+def create_offer(offer: TradeOffer):
+    return offer
+
+# View
+@app.get("/offers", response_model=List[TradeOffer])
+def get_offers(user_id: int):
+    return
+
+# Update
+@app.put("/offers/{offer_id}")
+def update_offer(offer_id: int, status: str):
+    return
