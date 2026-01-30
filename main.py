@@ -2,7 +2,7 @@ import os
 from typing import List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Header, Depends
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
 import socket
@@ -34,8 +34,10 @@ def root():
 
 @app.get("/whoami")
 def whoami():
-    container_name = os.getenv("CONTAINER_NAME", "unknown")
-    return {"container": container_name}
+    return {
+        "container_name": os.getenv("CONTAINER_NAME", "unknown"),
+        "host_name": socket.gethostname()
+        }
 
 # -------------------- Models --------------------
 class User(SQLModel, table=True):
@@ -53,10 +55,21 @@ class Game(SQLModel, table=True):
 
 class TradeOffer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # The game the requester is offering
     offered_game_id: int = Field(foreign_key="game.id")
+    # The game they want in return
     requested_game_id: int = Field(foreign_key="game.id")
-    status: str = Field(default="pending") # pending / accepted / rejected
+    # Who created the offer
     requester_id: int = Field(foreign_key="user.id")
+    # pending | accepted | rejected
+    status: str = Field(default="pending", index=True)
+
+# -------------------- Auth Dependency --------------------
+def get_current_user(x_user_id: Optional[int] = Header(None)):
+    if x_user_id is None:
+        raise HTTPException(status_code=401, detail="Missing X-User-ID header")
+    return x_user_id
+
 # -------------------- User Endpoints --------------------
 @app.post("/users", response_model=User, status_code=status.HTTP_201_CREATED)
 def create_user(user: User):
@@ -79,21 +92,27 @@ def get_user(user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         return user
 
-@app.put("/users/{user_id}", response_model=User)
-def update_user(user_id: int, updated_user: User):
+@app.put("/offers/{offer_id}")
+def update_offer(
+    offer_id: int,
+    status: str,
+    current_user_id: int = Depends(get_current_user)
+):
     with Session(engine) as session:
-        user = session.get(User, user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        user.name = updated_user.name
-        user.email = updated_user.email
-        user.password = updated_user.password
-        user.address = updated_user.address
-
+        offer = session.get(TradeOffer, offer_id)
+        if not offer:
+            raise HTTPException(status_code=404, detail="Offer not found")
+        if status not in ["pending", "accepted", "rejected"]:
+            raise HTTPException(400, "Invalid status")
+        
+        # EXTRA CREDIT: Only the requester can update their offer
+        if offer.requester_id != current_user_id:
+            raise HTTPException(403, "You are not authorized to update this offer")
+        
+        offer.status = status
         session.commit()
-        session.refresh(user)
-        return user
+        session.refresh(offer)
+        return offer
 
 @app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int):
@@ -168,18 +187,58 @@ def search_games(title: Optional[str] = None, owner_id: Optional[int] = None):
 
         return session.exec(query).all()
 
-# ------------------ Offers -----------------------------
+# ------------------ Trade Offers -----------------------------
 # Create
 @app.post("/offers", response_model=TradeOffer)
-def create_offer(offer: TradeOffer):
-    return offer
+def create_offer(offer: TradeOffer, current_user_id: int = Depends(get_current_user)):
+    with Session(engine) as session:
+        offered_game = session.get(Game, offer.offered_game_id)
+        requested_game = session.get(Game, offer.requested_game_id)
 
-# View
+        if not offered_game or not requested_game:
+            raise HTTPException(404, "Game not found")
+        if offered_game.owner_id != current_user_id:
+            raise HTTPException(403, "You can only offer your own games")
+
+        offer.requester_id = current_user_id
+        session.add(offer)
+        session.commit()
+        session.refresh(offer)
+        return offer
+
+# View offers received for games owned by user
 @app.get("/offers", response_model=List[TradeOffer])
-def get_offers(user_id: int):
-    return
+def get_offers(current_user_id: int = Depends(get_current_user)):
+    with Session(engine) as session:
+        return session.exec(
+            select(TradeOffer).where(
+                TradeOffer.requested_game_id.in_(
+                    select(Game.id).where(Game.owner_id == current_user_id)
+                )
+            )
+        ).all()
 
-# Update
+# Update (extra credit: only requester can update)
 @app.put("/offers/{offer_id}")
-def update_offer(offer_id: int, status: str):
-    return
+def update_offer(
+    offer_id: int,
+    status: str,
+    current_user_id: int = Depends(get_current_user)
+):
+    with Session(engine) as session:
+        offer = session.get(TradeOffer, offer_id)
+        if not offer:
+            raise HTTPException(status_code=404, detail="Offer not found")
+        if status not in ["pending", "accepted", "rejected"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+
+        # Only requester or owner of requested game can update
+        requested_game = session.get(Game, offer.requested_game_id)
+        if current_user_id != offer.requester_id and current_user_id != requested_game.owner_id:
+            raise HTTPException(403, detail="You are not authorized to update this offer")
+
+        offer.status = status
+        session.commit()
+        session.refresh(offer)
+        return offer
+
