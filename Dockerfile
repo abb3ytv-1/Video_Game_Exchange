@@ -4,6 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_URL=postgresql://gameuser:passgame@postgres:5432/videogameexchange
+ENV KAFKA_BOOTSTRAP=kafka:9092
 
 # Set working directory
 WORKDIR /app

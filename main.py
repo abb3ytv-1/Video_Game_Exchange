@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status, Header, Depends
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
+from kafka import KafkaProducer
+import json
 import socket
 
 # -------------------- Database Setup --------------------
@@ -14,6 +16,17 @@ DATABASE_URL = os.getenv(
 )
 
 engine = create_engine(DATABASE_URL, echo=True)
+
+# -------------------- Kafka Setup --------------------
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
+producer = KafkaProducer(
+    bootstrap_servers=KAFKA_BOOTSTRAP,
+    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+)
+
+def send_email_notification(message: dict):
+    producer.send("email_notifications", message)
+    producer.flush() # make sure the message is sent
 
 # -------------------- Lifespan Event --------------------
 @asynccontextmanager
@@ -240,5 +253,16 @@ def update_offer(
         offer.status = status
         session.commit()
         session.refresh(offer)
-        return offer
 
+        # Notify both offeror and offeree about status change
+        offeror = session.get(User, offer.requester_id)
+        offeree = session.get(User, requested_game.owner_id)
+        notification_type = f"offer_{status}"
+        send_email_notification({
+            "type": notification_type,
+            "recipients": [offeror.email, offeree.email],
+            "subject": f"Offer {status}",
+            "body": f"The trade offer for {requested_game.title} has been {status}."
+        })
+
+        return offer

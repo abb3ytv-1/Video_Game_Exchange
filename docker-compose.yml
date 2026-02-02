@@ -76,6 +76,18 @@ services:
     networks:
       - api-network
 
+  email_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    container_name: email_consumer
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+    networks:
+      - api-network
+
 volumes:
   postgres_data:
 
