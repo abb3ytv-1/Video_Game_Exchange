@@ -19,14 +19,42 @@ engine = create_engine(DATABASE_URL, echo=True)
 
 # -------------------- Kafka Setup --------------------
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-producer = KafkaProducer(
-    bootstrap_servers=KAFKA_BOOTSTRAP,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+_producer = None
+
+def get_kafka_producer():
+    """Lazy initialization of Kafka producer with retry logic."""
+    global _producer
+    if _producer is None:
+        import time
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                _producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+                )
+                print(f"Connected to Kafka at {KAFKA_BOOTSTRAP_SERVERS}")
+                break
+            except Exception as e:
+                print(f"[Attempt {attempt + 1}/{max_retries}] Failed to connect to Kafka: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(5)
+                else:
+                    print("Warning: Could not connect to Kafka. Notifications disabled.")
+    return _producer
 
 def send_email_notification(message: dict):
-    producer.send("email_notifications", message)
-    producer.flush() # make sure the message is sent
+    """Send a notification message to Kafka for email processing."""
+    producer = get_kafka_producer()
+    if producer:
+        try:
+            producer.send("email_notifications", message)
+            producer.flush()
+            print(f"Notification sent: {message['type']}")
+        except Exception as e:
+            print(f"Failed to send notification: {e}")
+    else:
+        print(f"Kafka not available. Notification not sent: {message['type']}")
 
 # -------------------- Lifespan Event --------------------
 @asynccontextmanager
@@ -105,28 +133,6 @@ def get_user(user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         return user
 
-@app.put("/offers/{offer_id}")
-def update_offer(
-    offer_id: int,
-    status: str,
-    current_user_id: int = Depends(get_current_user)
-):
-    with Session(engine) as session:
-        offer = session.get(TradeOffer, offer_id)
-        if not offer:
-            raise HTTPException(status_code=404, detail="Offer not found")
-        if status not in ["pending", "accepted", "rejected"]:
-            raise HTTPException(400, "Invalid status")
-        
-        # EXTRA CREDIT: Only the requester can update their offer
-        if offer.requester_id != current_user_id:
-            raise HTTPException(403, "You are not authorized to update this offer")
-        
-        offer.status = status
-        session.commit()
-        session.refresh(offer)
-        return offer
-
 @app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int):
     with Session(engine) as session:
@@ -135,6 +141,32 @@ def delete_user(user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         session.delete(user)
         session.commit()
+
+@app.put("/users/{user_id}/password")
+def change_password(
+    user_id: int,
+    new_password: str,
+    current_user_id: int = Depends(get_current_user)
+):
+    if current_user_id != user_id:
+        raise HTTPException(403, "You can only change your own password")
+    
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "User not found")
+        
+        user.password = new_password
+        session.commit()
+
+        send_email_notification({
+            "type": "password_changed",
+            "recipients": [user.email],
+            "subject": "Password Changed",
+            "body": "Your password has been successfully changed."
+        })
+
+        return {"message": "Password updated"}
 
 # -------------------- Game Endpoints --------------------
 @app.post("/games", response_model=Game, status_code=status.HTTP_201_CREATED)
@@ -217,6 +249,17 @@ def create_offer(offer: TradeOffer, current_user_id: int = Depends(get_current_u
         session.add(offer)
         session.commit()
         session.refresh(offer)
+
+        offeror = session.get(User, offer.requester_id)
+        offeree = session.get(User, requested_game.owner_id)
+
+        send_email_notification({
+            "type": "offer_created",
+            "recipients": [offeror.email, offeree.email],
+            "subject": "New Trade Offer Created",
+            "body": f"A new trade offer has been created for {requested_game.title}."
+        })
+
         return offer
 
 # View offers received for games owned by user
