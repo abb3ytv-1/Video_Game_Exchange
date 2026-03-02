@@ -4,3 +4,4 @@ sqlmodel
 psycopg2-binary
 python-multipart
 kafka-python
+prometheus-fastapi-instrumentator

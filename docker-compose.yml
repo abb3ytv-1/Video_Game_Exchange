@@ -58,7 +58,7 @@ services:
       - api3
     networks:
       - api-network
-
+  
   kafka:
     image: bitnami/kafka:latest
     container_name: kafka
@@ -94,9 +94,69 @@ services:
       - SMTP_FROM=${ETHEREAL_USER:-}
     networks:
       - api-network
+  
+  prometheus:
+    build: ./prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api1
+      - api2
+      - api3
+    networks:
+      - api-network
+  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - api-network
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+    depends_on:
+      - kafka
+    networks:
+      - api-network
+  
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://gameuser:passgame@postgres:5432/videogameexchange?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - api-network
+  
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx-exporter
+    command:
+      - "--nginx.scrape-uri=http://nginx-load-balancer:80/stub_status"
+    depends_on:
+      - nginx
+    networks:
+      - api-network
 
 volumes:
   postgres_data:
+  grafana_data:
 
 networks:
   api-network:

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status, Header, Depends
 from sqlmodel import SQLModel, Field, Session, create_engine, select
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from kafka import KafkaProducer
 import json
@@ -68,6 +69,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Expose /metrics endpoint for Prometheus
+Instrumentator().instrument(app).expose(app)
 
 @app.get("/")
 def root():
