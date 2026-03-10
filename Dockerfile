@@ -3,7 +3,8 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_URL=postgresql://gameuser:passgame@postgres:5432/videogameexchange
+ENV SHARD0_URL=postgresql://gameuser:passgame@postgres_shard0:5432/videogameexchange
+ENV SHARD1_URL=postgresql://gameuser:passgame@postgres_shard1:5432/videogameexchange
 ENV KAFKA_BOOTSTRAP=kafka:9092
 
 # Set working directory

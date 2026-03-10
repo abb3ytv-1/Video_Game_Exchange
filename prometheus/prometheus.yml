@@ -18,11 +18,12 @@ scrape_configs:
       - targets:
           - "kafka-exporter:9308"
 
-  # ---- PostgreSQL (via postgres-exporter) ----
+  # ---- PostgreSQL shards (one exporter per shard) ----
   - job_name: "postgres"
     static_configs:
       - targets:
-          - "postgres-exporter:9187"
+          - "postgres-exporter-shard0:9187"
+          - "postgres-exporter-shard1:9187"
 
   # ---- Nginx (via nginx-exporter) ----
   - job_name: "nginx"

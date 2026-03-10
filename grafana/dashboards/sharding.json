@@ -1,0 +1,156 @@
+{
+  "uid": "sharding",
+  "title": "Data Sharding",
+  "tags": ["sharding", "postgres", "distributed"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query Rate per Shard (queries/s)",
+      "description": "Shows how the application-level routing distributes queries across shard 0 (even IDs) and shard 1 (odd IDs). Balanced bars indicate even data distribution.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "sum(rate(shard_queries_total[1m])) by (shard_index)",
+          "legendFormat": "shard {{shard_index}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Cross-Shard (Scatter-Gather) Operations Rate",
+      "description": "Rate of operations that required querying more than one shard — trade offer creation/update with games owned by users on different shards, and GET /offers / GET /games (no owner filter).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "sum(rate(cross_shard_operations_total[1m])) by (operation)",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Query Latency p95 per Shard (seconds)",
+      "description": "95th-percentile application-measured query latency broken down by shard. Divergence between shards can indicate uneven load or hardware differences.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(shard_query_duration_seconds_bucket[5m])) by (shard_index, le))",
+          "legendFormat": "p95 shard {{shard_index}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "PostgreSQL Live Rows per Shard",
+      "description": "Live row counts per table per shard from postgres-exporter. Verifies that data is actually partitioned: even-ID records land on shard 0, odd-ID records on shard 1.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "pg_stat_user_tables_n_live_tup{instance=\"postgres-exporter-shard0:9187\"}",
+          "legendFormat": "shard0 — {{relname}}",
+          "refId": "A"
+        },
+        {
+          "expr": "pg_stat_user_tables_n_live_tup{instance=\"postgres-exporter-shard1:9187\"}",
+          "legendFormat": "shard1 — {{relname}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Shard Query Breakdown by Operation",
+      "description": "Per-shard query counts split by operation type, showing which endpoints touch which shards most frequently.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "sum(rate(shard_queries_total[1m])) by (shard_index, operation)",
+          "legendFormat": "shard{{shard_index}} — {{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "PostgreSQL Active Connections per Shard",
+      "description": "Connection pool activity per shard node. Useful for verifying that all three API instances maintain connections to both shards.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count{instance=\"postgres-exporter-shard0:9187\"}",
+          "legendFormat": "shard0 — state={{state}}",
+          "refId": "A"
+        },
+        {
+          "expr": "pg_stat_activity_count{instance=\"postgres-exporter-shard1:9187\"}",
+          "legendFormat": "shard1 — state={{state}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": { "list": [] },
+  "annotations": { "list": [] }
+}

@@ -1,12 +1,13 @@
 # Video Game Exchange API Client
 
-A Python client library for accessing the Retro Video Game Exchange API, now deployed in a multi-node setup with load balancing via NGINX.
+A Python client library for accessing the Retro Video Game Exchange API, deployed in a multi-node setup with Nginx load balancing and **horizontal data sharding** across two independent PostgreSQL nodes.
 
 ---
 
 ### Architecture Overview
 
-The API is deployed across three FastAPI containers with NGINX acting as a load balancer, distributing requests in a round-robin fashion. All API instances share the same PostgreSQL database for consistent data storage.
+The API is deployed across three FastAPI containers with NGINX load-balancing in round-robin. The database tier is **horizontally sharded** across two independent PostgreSQL nodes — each API instance holds connection pools to both shards and routes every query to the correct node at the application layer.
+
 ```
           ┌────────────┐
           │  NGINX LB  │
@@ -18,13 +19,30 @@ The API is deployed across three FastAPI containers with NGINX acting as a load 
  ┌──────┐  ┌──────┐  ┌──────┐
  │ API1 │  │ API2 │  │ API3 │
  │(8000)│  │(8000)│  │(8000)│
- └──────┘  └──────┘  └──────┘
-       │        │        │
-       └────────┴────────┘
-             PostgreSQL
-            
+ └──┬───┘  └──┬───┘  └──┬───┘
+    │  ╲      │  ╲      │  ╲         each API connects to BOTH shards
+    │   ╲     │   ╲     │   ╲
+ ┌──┴──────────────────────┐  ┌──┴──────────────────────┐
+ │  PostgreSQL Shard 0     │  │  PostgreSQL Shard 1     │
+ │  Even IDs (2, 4, 6 …)  │  │  Odd IDs  (1, 3, 5 …)  │
+ └─────────────────────────┘  └─────────────────────────┘
+
 *This diagram was created using AI
 ```
+
+#### Shard Routing Strategy
+
+| Concept | Detail |
+|---|---|
+| Shard key | `user_id` |
+| Routing function | `shard = entity_id % 2` |
+| ID assignment | Each shard's PostgreSQL sequences are interleaved: shard 0 produces even IDs, shard 1 produces odd IDs — so any `user_id`, `game_id`, or `offer_id` self-encodes its shard |
+| User creation | Pre-assigned by `MD5(email) % 2` (deterministic, stable across restarts) |
+| Games & offers | Co-located with their owning user on the same shard |
+| Cross-shard queries | Scatter-gather pattern: `GET /games`, `GET /games/search` (no owner), `GET /offers`, and trade offers where the two game owners are on different shards |
+| Partial availability | If one shard is down, list endpoints skip it and return results from the healthy shard |
+
+`GET /shards` returns the live shard topology.
 
 NGINX only forwards traffic within the Docker network.
 
